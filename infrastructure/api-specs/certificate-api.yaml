@@ -1,0 +1,139 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Certificate Service
+  version: "1.0.0"
+  description: "Handles PDF certificate generation (triggered via SQS), S3 storage and public verification endpoint."
+
+servers:
+  - url: http://localhost:5008
+    description: Local development
+  - url: https://api.dotlearnacademy.com/certificates
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    CertificateRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cert_abc123"
+        studentId:
+          type: string
+          example: "usr_abc123"
+        studentName:
+          type: string
+          example: "Saurabh Kumar"
+        courseId:
+          type: string
+          example: "crs_xyz789"
+        courseName:
+          type: string
+          example: "Complete .NET 8 Microservices"
+        instructorName:
+          type: string
+          example: "John Doe"
+        verificationCode:
+          type: string
+          example: "uuid-v4-verification-code"
+        certificateUrl:
+          type: string
+          description: "S3 key — resolved to presigned URL on download"
+          example: "certificates/cert_abc123.pdf"
+        issuedAt:
+          type: string
+          format: date-time
+
+    VerifyResponse:
+      type: object
+      properties:
+        isValid:
+          type: boolean
+          example: true
+        certificate:
+          $ref: '#/components/schemas/CertificateRecord'
+
+paths:
+
+  /certificates/student/{studentId}:
+    get:
+      summary: Get all certificates for a student
+      tags: [Certificates]
+      parameters:
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of earned certificates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificateRecord'
+        "403":
+          description: Cannot view another student's certificates
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /certificates/{id}/download:
+    get:
+      summary: Get presigned S3 download URL for certificate PDF
+      tags: [Certificates]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Presigned S3 GET URL (24hr expiry)
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/PresignedUrlResponse'
+        "404":
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /certificates/verify/{verificationCode}:
+    get:
+      summary: Verify certificate by verification code (public — no auth)
+      security: []
+      tags: [Certificates]
+      parameters:
+        - name: verificationCode
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "uuid-v4-verification-code"
+      responses:
+        "200":
+          description: Certificate verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResponse'
+        "404":
+          description: Invalid verification code
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'

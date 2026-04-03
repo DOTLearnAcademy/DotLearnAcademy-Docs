@@ -1,0 +1,67 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Common Schemas
+  version: "1.0.0"
+
+components:
+  schemas:
+
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp, correlationId]
+      properties:
+        code:
+          type: string
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          example: "Email already exists"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-04-03T10:00:00Z"
+        correlationId:
+          type: string
+          example: "uuid-v4-here"
+
+    PaginatedResponse:
+      type: object
+      required: [data, page, pageSize, totalCount, totalPages]
+      properties:
+        data:
+          type: array
+          items: {}
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+        totalCount:
+          type: integer
+          example: 100
+        totalPages:
+          type: integer
+          example: 5
+
+    PresignedUrlResponse:
+      type: object
+      required: [url, expiresAt, s3Key]
+      properties:
+        url:
+          type: string
+          example: "https://s3.amazonaws.com/dotlearn-videos-dev/..."
+        expiresAt:
+          type: string
+          format: date-time
+          example: "2026-04-03T10:15:00Z"
+        s3Key:
+          type: string
+          example: "videos/lesson-123/video.mp4"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "RS256 signed JWT. Obtain from POST /auth/login"
