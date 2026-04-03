@@ -1,0 +1,351 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Course Service
+  version: "1.0.0"
+  description: "Handles course CRUD, search, categories, publishing workflow and instructor verification."
+
+servers:
+  - url: http://localhost:5002
+    description: Local development
+  - url: https://api.dotlearnacademy.com/courses
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    CreateCourseRequest:
+      type: object
+      required: [title, description, category, level, language, price]
+      properties:
+        title:
+          type: string
+          example: "Complete .NET 8 Microservices"
+        description:
+          type: string
+          example: "Learn to build microservices with .NET 8"
+        category:
+          type: string
+          example: "Backend Development"
+        level:
+          type: string
+          enum: [Beginner, Intermediate, Advanced]
+          example: "Intermediate"
+        language:
+          type: string
+          example: "English"
+        price:
+          type: number
+          format: float
+          example: 999.00
+        isFree:
+          type: boolean
+          example: false
+
+    UpdateCourseRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        level:
+          type: string
+          enum: [Beginner, Intermediate, Advanced]
+        language:
+          type: string
+        price:
+          type: number
+        status:
+          type: string
+          enum: [Draft, Published, Archived]
+
+    CourseResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "crs_xyz789"
+        title:
+          type: string
+          example: "Complete .NET 8 Microservices"
+        description:
+          type: string
+        category:
+          type: string
+        level:
+          type: string
+          enum: [Beginner, Intermediate, Advanced]
+        language:
+          type: string
+        price:
+          type: number
+          example: 999.00
+        isFree:
+          type: boolean
+        status:
+          type: string
+          enum: [Draft, Published, Archived]
+        thumbnailUrl:
+          type: string
+          example: "https://cdn.dotlearnacademy.com/assets/crs_xyz789.jpg"
+        instructorId:
+          type: string
+          example: "usr_abc123"
+        instructorName:
+          type: string
+          example: "Saurabh Kumar"
+        totalLessons:
+          type: integer
+          example: 42
+        totalDurationMinutes:
+          type: integer
+          example: 600
+        enrollmentCount:
+          type: integer
+          example: 250
+        averageRating:
+          type: number
+          example: 4.7
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CourseListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseResponse'
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 20
+        totalCount:
+          type: integer
+          example: 150
+        totalPages:
+          type: integer
+          example: 8
+
+    PriceResponse:
+      type: object
+      properties:
+        courseId:
+          type: string
+          example: "crs_xyz789"
+        price:
+          type: number
+          example: 999.00
+        isFree:
+          type: boolean
+          example: false
+
+paths:
+
+  /courses:
+    get:
+      summary: Browse and search courses
+      security: []
+      tags: [Courses]
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+            example: "dotnet microservices"
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [Beginner, Intermediate, Advanced]
+        - name: isFree
+          in: query
+          schema:
+            type: boolean
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [newest, mostPopular, highestRated, priceLowHigh, priceHighLow]
+            default: newest
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of published courses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListResponse'
+
+    post:
+      summary: Create a new course (Instructor only)
+      tags: [Courses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCourseRequest'
+      responses:
+        "201":
+          description: Course created in Draft state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseResponse'
+        "403":
+          description: Only Instructors can create courses
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /courses/{id}:
+    get:
+      summary: Get course details
+      security: []
+      tags: [Courses]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Course details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseResponse'
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update course (Instructor — own course only)
+      tags: [Courses]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseRequest'
+      responses:
+        "200":
+          description: Course updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseResponse'
+        "403":
+          description: Not your course
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Archive course (soft delete — Instructor own course only)
+      tags: [Courses]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Course archived
+        "403":
+          description: Not your course
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /courses/{id}/thumbnail-url:
+    get:
+      summary: Get presigned S3 URL for thumbnail upload
+      tags: [Courses]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Presigned S3 upload URL
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/PresignedUrlResponse'
+
+  /internal/courses/{id}/price:
+    get:
+      summary: "INTERNAL — Get course price (called by Enrollment Service only)"
+      tags: [Internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Course price info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PriceResponse'
+        "404":
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'

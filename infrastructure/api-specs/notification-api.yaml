@@ -1,0 +1,172 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Notification Service
+  version: "1.0.0"
+  description: "SQS consumer for all platform events. Handles SES email delivery and in-app notification storage."
+
+servers:
+  - url: http://localhost:5010
+    description: Local development
+  - url: https://api.dotlearnacademy.com/notifications
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    NotificationRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "ntf_abc123"
+        userId:
+          type: string
+          example: "usr_abc123"
+        type:
+          type: string
+          enum: [PaymentSucceeded, EnrollmentCompleted, NewReply, CoursePublished, PasswordReset, SystemBroadcast]
+          example: "EnrollmentCompleted"
+        title:
+          type: string
+          example: "Course Completed!"
+        body:
+          type: string
+          example: "Congratulations! You have completed Complete .NET 8 Microservices"
+        isRead:
+          type: boolean
+          default: false
+        createdAt:
+          type: string
+          format: date-time
+
+    MarkReadRequest:
+      type: object
+      required: [notificationId]
+      properties:
+        notificationId:
+          type: string
+          example: "ntf_abc123"
+
+    BroadcastRequest:
+      type: object
+      required: [title, body, target]
+      properties:
+        title:
+          type: string
+          example: "Platform Maintenance"
+        body:
+          type: string
+          example: "DOTLearn will be down for maintenance on Sunday 2am-4am IST"
+        type:
+          type: string
+          enum: [Info, Warning, Alert]
+          default: Info
+        target:
+          type: string
+          enum: [All, Students, Instructors]
+          example: "All"
+
+paths:
+
+  /notifications/{userId}:
+    get:
+      summary: Get notifications for a user (unread first)
+      tags: [Notifications]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: isRead
+          in: query
+          schema:
+            type: boolean
+            description: "Filter by read/unread. Omit for all."
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated notifications (unread first)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationRecord'
+                  unreadCount:
+                    type: integer
+                    example: 3
+                  page:
+                    type: integer
+                  totalCount:
+                    type: integer
+        "403":
+          description: Cannot view another user's notifications
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /notifications/{id}/read:
+    put:
+      summary: Mark a single notification as read
+      tags: [Notifications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRecord'
+
+  /notifications/read-all:
+    put:
+      summary: Mark all notifications as read for current user
+      tags: [Notifications]
+      responses:
+        "200":
+          description: All notifications marked as read
+
+  /notifications/broadcast:
+    post:
+      summary: Broadcast system notification to all users (Admin only)
+      tags: [Admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BroadcastRequest'
+      responses:
+        "200":
+          description: Broadcast sent
+        "403":
+          description: Admin only
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
