@@ -1,0 +1,280 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Lesson Service
+  version: "1.0.0"
+  description: "Handles lesson CRUD, S3 video upload flow, PDF resources, ordering and access control."
+
+servers:
+  - url: http://localhost:5003
+    description: Local development
+  - url: https://api.dotlearnacademy.com/lessons
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    CreateLessonRequest:
+      type: object
+      required: [courseId, title, contentType, orderIndex]
+      properties:
+        courseId:
+          type: string
+          example: "crs_xyz789"
+        title:
+          type: string
+          example: "Introduction to Microservices"
+        contentType:
+          type: string
+          enum: [Video, PDF, Text]
+          example: "Video"
+        orderIndex:
+          type: integer
+          example: 1
+        isPreview:
+          type: boolean
+          default: false
+        durationMinutes:
+          type: integer
+          example: 15
+
+    LessonResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "les_abc111"
+        courseId:
+          type: string
+          example: "crs_xyz789"
+        title:
+          type: string
+        contentType:
+          type: string
+          enum: [Video, PDF, Text]
+        orderIndex:
+          type: integer
+        isPreview:
+          type: boolean
+        durationMinutes:
+          type: integer
+        contentUrl:
+          type: string
+          description: "S3 key — resolved to signed URL at request time"
+          example: "videos/crs_xyz789/les_abc111.mp4"
+        createdAt:
+          type: string
+          format: date-time
+
+    UploadUrlResponse:
+      type: object
+      properties:
+        uploadUrl:
+          type: string
+          example: "https://s3.amazonaws.com/dotlearn-videos-dev/..."
+        expiresAt:
+          type: string
+          format: date-time
+        s3Key:
+          type: string
+          example: "videos/crs_xyz789/les_abc111.mp4"
+
+    UploadCompleteRequest:
+      type: object
+      required: [s3Key]
+      properties:
+        s3Key:
+          type: string
+          example: "videos/crs_xyz789/les_abc111.mp4"
+        durationMinutes:
+          type: integer
+          example: 15
+
+    ReorderRequest:
+      type: object
+      required: [lessonIds]
+      properties:
+        lessonIds:
+          type: array
+          items:
+            type: string
+          example: ["les_abc111", "les_abc222", "les_abc333"]
+
+paths:
+
+  /lessons:
+    post:
+      summary: Create a new lesson (Instructor — own course only)
+      tags: [Lessons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLessonRequest'
+      responses:
+        "201":
+          description: Lesson created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonResponse'
+        "403":
+          description: Not your course
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /lessons/{id}:
+    get:
+      summary: Get lesson details (enrolled students or instructor only)
+      tags: [Lessons]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lesson details with signed content URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonResponse'
+        "403":
+          description: Not enrolled in this course
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update lesson (Instructor — own course only)
+      tags: [Lessons]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLessonRequest'
+      responses:
+        "200":
+          description: Lesson updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonResponse'
+
+    delete:
+      summary: Delete lesson (Instructor — own course only)
+      tags: [Lessons]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Lesson deleted
+
+  /lessons/{id}/upload-url:
+    get:
+      summary: Get presigned S3 upload URL for video/PDF
+      tags: [Lessons]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fileType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [video/mp4, application/pdf]
+      responses:
+        "200":
+          description: Presigned S3 PUT URL (15 min expiry)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
+
+  /lessons/{id}/upload-complete:
+    post:
+      summary: Confirm upload complete and store S3 key
+      tags: [Lessons]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadCompleteRequest'
+      responses:
+        "200":
+          description: Content URL recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessonResponse'
+
+  /courses/{courseId}/lessons:
+    get:
+      summary: Get all lessons for a course
+      tags: [Lessons]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of lessons ordered by orderIndex
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LessonResponse'
+
+  /courses/{courseId}/lessons/reorder:
+    put:
+      summary: Reorder lessons (Instructor — own course only)
+      tags: [Lessons]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderRequest'
+      responses:
+        "200":
+          description: Lessons reordered successfully

@@ -1,0 +1,173 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Progress Service
+  version: "1.0.0"
+  description: "Handles video watch time tracking, 85% completion threshold, resume playback and course progress summary."
+
+servers:
+  - url: http://localhost:5007
+    description: Local development
+  - url: https://api.dotlearnacademy.com/progress
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    TrackProgressRequest:
+      type: object
+      required: [studentId, lessonId, watchedSeconds]
+      properties:
+        studentId:
+          type: string
+          example: "usr_abc123"
+        lessonId:
+          type: string
+          example: "les_abc111"
+        watchedSeconds:
+          type: integer
+          description: "Total seconds watched so far (not delta)"
+          example: 450
+
+    ProgressRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "prg_abc123"
+        studentId:
+          type: string
+          example: "usr_abc123"
+        lessonId:
+          type: string
+          example: "les_abc111"
+        watchedSeconds:
+          type: integer
+          example: 450
+        durationSeconds:
+          type: integer
+          example: 600
+        isCompleted:
+          type: boolean
+          example: false
+          description: "True when watchedSeconds >= durationSeconds * 0.85"
+        lastUpdatedAt:
+          type: string
+          format: date-time
+
+    CourseProgressSummary:
+      type: object
+      properties:
+        courseId:
+          type: string
+          example: "crs_xyz789"
+        studentId:
+          type: string
+          example: "usr_abc123"
+        totalLessons:
+          type: integer
+          example: 20
+        completedLessons:
+          type: integer
+          example: 9
+        progressPercent:
+          type: number
+          example: 45.0
+        lastWatchedLessonId:
+          type: string
+          example: "les_abc111"
+        lessonProgress:
+          type: array
+          items:
+            type: object
+            properties:
+              lessonId:
+                type: string
+              isCompleted:
+                type: boolean
+              watchedSeconds:
+                type: integer
+
+paths:
+
+  /progress/track:
+    put:
+      summary: Track video watch progress (heartbeat every 30 seconds)
+      tags: [Progress]
+      description: "Idempotent upsert. Safe to call frequently. Publishes LessonCompleted event to SQS when 85% threshold crossed."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackProgressRequest'
+      responses:
+        "200":
+          description: Progress recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressRecord'
+        "403":
+          description: Can only track your own progress
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /progress/lesson/{lessonId}/student/{studentId}:
+    get:
+      summary: Get progress for a specific lesson (resume playback)
+      tags: [Progress]
+      parameters:
+        - name: lessonId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lesson progress — use watchedSeconds for video resume
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressRecord'
+        "404":
+          description: No progress recorded yet
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /progress/course/{courseId}/student/{studentId}:
+    get:
+      summary: Get full course progress summary
+      tags: [Progress]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: studentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Per-lesson completion status for curriculum sidebar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseProgressSummary'

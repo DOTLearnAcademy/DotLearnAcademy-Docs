@@ -1,0 +1,353 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Auth Service
+  version: "1.0.0"
+  description: "Handles user registration, login, JWT tokens, OAuth, profile management and password reset."
+
+servers:
+  - url: http://localhost:5001
+    description: Local development
+  - url: https://api.dotlearnacademy.com/auth
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [fullName, email, password, role]
+      properties:
+        fullName:
+          type: string
+          example: "Saurabh Kumar"
+        email:
+          type: string
+          format: email
+          example: "saurabh@example.com"
+        password:
+          type: string
+          minLength: 8
+          example: "SecurePass123!"
+        role:
+          type: string
+          enum: [Student, Instructor]
+          example: "Student"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "saurabh@example.com"
+        password:
+          type: string
+          example: "SecurePass123!"
+
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: "eyJhbGciOiJSUzI1NiJ9..."
+        expiresIn:
+          type: integer
+          example: 900
+        tokenType:
+          type: string
+          example: "Bearer"
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: "uuid-refresh-token-here"
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "usr_abc123"
+        fullName:
+          type: string
+          example: "Saurabh Kumar"
+        email:
+          type: string
+          example: "saurabh@example.com"
+        role:
+          type: string
+          enum: [Student, Instructor, Admin]
+        avatarUrl:
+          type: string
+          example: "https://cdn.dotlearnacademy.com/avatars/usr_abc123.jpg"
+        bio:
+          type: string
+          example: "Passionate learner"
+        createdAt:
+          type: string
+          format: date-time
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        fullName:
+          type: string
+          example: "Saurabh Kumar"
+        bio:
+          type: string
+          example: "Passionate learner"
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "saurabh@example.com"
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          example: "uuid-reset-token"
+        newPassword:
+          type: string
+          minLength: 8
+          example: "NewSecurePass123!"
+
+    JwksResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty: { type: string, example: "RSA" }
+              use: { type: string, example: "sig" }
+              kid: { type: string, example: "key-id-1" }
+              n:   { type: string }
+              e:   { type: string, example: "AQAB" }
+
+paths:
+
+  /register:
+    post:
+      summary: Register a new user
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /login:
+    post:
+      summary: Login with email and password
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /refresh:
+    post:
+      summary: Refresh access token
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        "200":
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "401":
+          description: Refresh token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /.well-known/jwks.json:
+    get:
+      summary: Get RSA public key set for JWT validation
+      security: []
+      tags: [Auth]
+      responses:
+        "200":
+          description: JWKS public key set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JwksResponse'
+
+  /profile/{id}:
+    get:
+      summary: Get user profile
+      tags: [Profile]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "usr_abc123"
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "403":
+          description: Cannot view another user's profile
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update user profile
+      tags: [Profile]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        "403":
+          description: Cannot update another user's profile
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /profile/{id}/avatar-url:
+    get:
+      summary: Get presigned S3 URL for avatar upload
+      tags: [Profile]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Presigned S3 upload URL
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/PresignedUrlResponse'
+
+  /password-reset:
+    post:
+      summary: Request password reset email
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        "200":
+          description: Reset email sent if account exists
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /password-reset/confirm:
+    post:
+      summary: Confirm password reset with token
+      security: []
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        "200":
+          description: Password reset successful
+        "400":
+          description: Token invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'

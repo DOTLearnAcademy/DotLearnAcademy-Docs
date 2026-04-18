@@ -1,0 +1,304 @@
+openapi: "3.0.3"
+info:
+  title: DOTLearn Academy - Forum Service
+  version: "1.0.0"
+  description: "Handles discussion threads, replies, instructor moderation and admin soft-delete."
+
+servers:
+  - url: http://localhost:5009
+    description: Local development
+  - url: https://api.dotlearnacademy.com/forum
+    description: Production
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      $ref: './common.yaml#/components/securitySchemes/BearerAuth'
+
+  schemas:
+    CreateThreadRequest:
+      type: object
+      required: [courseId, title, body]
+      properties:
+        courseId:
+          type: string
+          example: "crs_xyz789"
+        lessonId:
+          type: string
+          nullable: true
+          description: "Optional — thread scoped to a specific lesson"
+          example: "les_abc111"
+        title:
+          type: string
+          example: "Question about dependency injection"
+        body:
+          type: string
+          example: "I don't understand how DI works in .NET 8..."
+
+    ThreadResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "thr_abc123"
+        courseId:
+          type: string
+        lessonId:
+          type: string
+          nullable: true
+        title:
+          type: string
+        body:
+          type: string
+        authorId:
+          type: string
+        authorName:
+          type: string
+        isPinned:
+          type: boolean
+          default: false
+        isClosed:
+          type: boolean
+          default: false
+        isDeleted:
+          type: boolean
+          default: false
+        replyCount:
+          type: integer
+          example: 5
+        upvoteCount:
+          type: integer
+          example: 12
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateReplyRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          example: "DI works by registering services in the DI container..."
+
+    ReplyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "rep_abc123"
+        threadId:
+          type: string
+        body:
+          type: string
+        authorId:
+          type: string
+        authorName:
+          type: string
+        isAccepted:
+          type: boolean
+          default: false
+        isDeleted:
+          type: boolean
+          default: false
+        upvoteCount:
+          type: integer
+          example: 3
+        createdAt:
+          type: string
+          format: date-time
+
+paths:
+
+  /forum/threads:
+    post:
+      summary: Create a thread (enrolled students or instructor)
+      tags: [Threads]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateThreadRequest'
+      responses:
+        "201":
+          description: Thread created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadResponse'
+        "403":
+          description: Not enrolled in this course
+          content:
+            application/json:
+              schema:
+                $ref: './common.yaml#/components/schemas/ErrorResponse'
+
+  /forum/threads/{courseId}:
+    get:
+      summary: Get all threads for a course
+      tags: [Threads]
+      parameters:
+        - name: courseId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: lessonId
+          in: query
+          schema:
+            type: string
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [newest, mostUpvoted, unanswered]
+            default: newest
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated thread list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ThreadResponse'
+                  page:
+                    type: integer
+                  totalCount:
+                    type: integer
+
+  /forum/threads/{id}:
+    get:
+      summary: Get single thread with replies
+      tags: [Threads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Thread with all replies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadResponse'
+
+    delete:
+      summary: Delete thread (own thread or instructor/admin)
+      tags: [Threads]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Thread soft-deleted
+
+  /forum/threads/{id}/pin:
+    put:
+      summary: Pin or unpin thread (instructor own course only)
+      tags: [Moderation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pin status toggled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadResponse'
+
+  /forum/threads/{id}/close:
+    put:
+      summary: Close or reopen thread (instructor own course only)
+      tags: [Moderation]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Close status toggled
+
+  /forum/threads/{id}/replies:
+    post:
+      summary: Add a reply to a thread
+      tags: [Replies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReplyRequest'
+      responses:
+        "201":
+          description: Reply added — publishes NewReply SQS event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyResponse'
+
+  /forum/replies/{id}/accept:
+    put:
+      summary: Mark reply as accepted answer (instructor only)
+      tags: [Replies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reply marked as accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplyResponse'
+
+  /forum/replies/{id}/upvote:
+    put:
+      summary: Upvote a reply
+      tags: [Replies]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upvote recorded
